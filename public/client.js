@@ -256,24 +256,15 @@
     const container = document.querySelector('.board-container');
     if (!container) return;
     
-    // 获取容器真实渲染大小
     const rect = container.getBoundingClientRect();
     if (rect.width < 10 || rect.height < 10) return;
 
-    // 找最小边长作为正方形棋盘尺寸
     let size = Math.min(rect.width, rect.height);
-    size = Math.max(100, size - 20); // 留出安全边距
+    size = Math.max(100, size - 20); 
 
-    // 仅仅设置宽高，交由 Flex 居中，彻底告别绝对定位逃逸问题
     canvas.style.width = size + 'px';
     canvas.style.height = size + 'px';
     
-    // 清理可能遗留的内联样式
-    canvas.style.left = '';
-    canvas.style.top = '';
-    canvas.style.transform = '';
-    canvas.style.position = '';
-
     const dpr = window.devicePixelRatio || 1;
     canvas.width = Math.round(size * dpr);
     canvas.height = Math.round(size * dpr);
@@ -354,11 +345,18 @@
     return [x, y];
   }
 
-  canvas.addEventListener('click', (e) => {
+  // 【核心修改】：将 click 换成 pointerdown，并阻止默认行为
+  canvas.addEventListener('pointerdown', (e) => {
+    // 阻止浏览器默认行为（如可能引发的 click 事件、选中、缩放等），提升手感
+    e.preventDefault(); 
+
     if (state.status !== 'playing' || state.turn !== state.myColor) return;
+    
+    // 兼容触屏和鼠标，获取坐标
     const p = toBoardCoords(e.clientX, e.clientY);
     if (!p) return;
     const [x, y] = p;
+    
     if ((state.board[y]?.[x] ?? BLACK) !== EMPTY) return;
 
     if (state.pendingMove && state.pendingMove.x === x && state.pendingMove.y === y) {
@@ -368,7 +366,10 @@
       state.pendingMove = { x, y };
       draw();
     }
-  });
+  }, { passive: false });
+
+  // 防止某些浏览器在 pointerdown 之后又触发一次 click
+  canvas.addEventListener('click', (e) => e.preventDefault());
 
   function addChatMessage(msg) {
     const row = document.createElement('div'); row.className = 'msg';
