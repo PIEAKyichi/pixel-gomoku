@@ -15,7 +15,11 @@
   --red:    #ef7d57;
 }
 
-html, body { height: 100%; overflow: hidden; }
+html, body { 
+  height: 100%; 
+  overflow: hidden; 
+  -webkit-tap-highlight-color: transparent; /* 禁用手机端点击蓝色高亮 */
+}
 
 body {
   background-color: var(--bg);
@@ -87,7 +91,7 @@ button {
   font-family: inherit; font-size: 14px; font-weight: bold; letter-spacing: 2px; padding: 11px 18px;
   color: var(--ink); background: var(--accent); border: 3px solid var(--ink);
   box-shadow: inset -3px -3px 0 rgba(0,0,0,.28), inset 3px 3px 0 rgba(255,255,255,.28);
-  cursor: pointer; user-select: none;
+  cursor: pointer; user-select: none; -webkit-user-select: none;
 }
 button:hover { filter: brightness(1.12); }
 button:active { transform: translate(2px, 2px); box-shadow: inset 3px 3px 0 rgba(0,0,0,.28); }
@@ -157,7 +161,7 @@ button:active { transform: translate(2px, 2px); box-shadow: inset 3px 3px 0 rgba
 .opponent-zone .bubble { left: 0; }
 .me-zone .bubble { right: 0; }
 
-/* 棋盘容器：统一由 Flex 居中，并限制溢出 */
+/* 棋盘容器 */
 .board-container { 
   flex: 1; 
   display: flex; 
@@ -170,10 +174,14 @@ button:active { transform: translate(2px, 2px); box-shadow: inset 3px 3px 0 rgba
 }
 
 #board {
-  /* 宽高由 JS 动态计算，确保不溢出 */
+  /* 宽高由 JS 动态计算 */
   border: 4px solid var(--ink); box-shadow: 0 0 0 4px var(--line), 8px 8px 0 rgba(0,0,0,.45);
   cursor: pointer; touch-action: manipulation;
   display: block;
+  user-select: none; 
+  -webkit-user-select: none; /* 防止长按选中 */
+  -webkit-touch-callout: none; /* 防止长按弹窗 */
+  -webkit-tap-highlight-color: transparent; /* 强制禁用高亮 */
 }
 
 /* 右侧聊天区 */
@@ -257,10 +265,7 @@ button:active { transform: translate(2px, 2px); box-shadow: inset 3px 3px 0 rgba
   
   .players-top { flex: none; margin-bottom: 8px; }
 
-  .board-container { 
-    flex: 1; 
-    min-height: 0; 
-  }
+  .board-container { flex: 1; min-height: 0; }
 
   .chat-area { 
     flex: none; 
