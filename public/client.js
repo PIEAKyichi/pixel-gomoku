@@ -262,15 +262,17 @@
 
     // 找最小边长作为正方形棋盘尺寸
     let size = Math.min(rect.width, rect.height);
-    size = size - 10; // 留出一点安全边距
-    if (size < 100) size = 100; 
+    size = Math.max(100, size - 20); // 留出安全边距
 
-    // 强制设置大小和居中定位
+    // 仅仅设置宽高，交由 Flex 居中，彻底告别绝对定位逃逸问题
     canvas.style.width = size + 'px';
     canvas.style.height = size + 'px';
-    canvas.style.left = '50%';
-    canvas.style.top = '50%';
-    canvas.style.transform = 'translate(-50%, -50%)';
+    
+    // 清理可能遗留的内联样式
+    canvas.style.left = '';
+    canvas.style.top = '';
+    canvas.style.transform = '';
+    canvas.style.position = '';
 
     const dpr = window.devicePixelRatio || 1;
     canvas.width = Math.round(size * dpr);
