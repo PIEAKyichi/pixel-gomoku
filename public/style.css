@@ -117,15 +117,15 @@ button:active { transform: translate(2px, 2px); box-shadow: inset 3px 3px 0 rgba
 /* 左侧游戏区 */
 .game-vertical {
   display: flex; flex-direction: column; align-items: center;
-  flex: 1; /* 修复电脑端失衡：让左侧占据剩余空间 */
-  min-width: 0;
-  height: 100%; gap: 8px;
+  flex: 1; 
+  min-width: 0; min-height: 0;
+  gap: 8px;
 }
 
 /* 顶部玩家栏 */
 .players-top {
   display: flex; justify-content: space-between; width: 100%; position: relative;
-  margin-bottom: 4px;
+  flex: none;
 }
 .player-zone { position: relative; }
 .opponent-zone { display: flex; justify-content: flex-start; }
@@ -157,15 +157,26 @@ button:active { transform: translate(2px, 2px); box-shadow: inset 3px 3px 0 rgba
 .opponent-zone .bubble { left: 0; }
 .me-zone .bubble { right: 0; }
 
-/* 棋盘容器 */
-.board-container { flex: 1; display: flex; justify-content: center; align-items: center; min-height: 0; width: 100%; }
+/* 棋盘容器：统一由 Flex 居中，并限制溢出 */
+.board-container { 
+  flex: 1; 
+  display: flex; 
+  justify-content: center; 
+  align-items: center; 
+  width: 100%;
+  min-height: 0; 
+  position: relative; 
+  overflow: hidden;
+}
+
 #board {
   /* 宽高由 JS 动态计算，确保不溢出 */
   border: 4px solid var(--ink); box-shadow: 0 0 0 4px var(--line), 8px 8px 0 rgba(0,0,0,.45);
   cursor: pointer; touch-action: manipulation;
+  display: block;
 }
 
-/* 右侧聊天区 (固定宽度，防止抢走棋盘空间) */
+/* 右侧聊天区 */
 .chat-area {
   flex: none;
   width: 340px;
@@ -236,7 +247,6 @@ button:active { transform: translate(2px, 2px); box-shadow: inset 3px 3px 0 rgba
     gap: 6px;
   }
   
-  /* 上方游戏区 */
   .game-vertical {
     flex: 1;
     display: flex;
@@ -249,21 +259,12 @@ button:active { transform: translate(2px, 2px); box-shadow: inset 3px 3px 0 rgba
 
   .board-container { 
     flex: 1; 
-    position: relative; 
-    width: 100%; 
     min-height: 0; 
-    overflow: hidden;
-  }
-  
-  #board {
-    position: absolute;
-    /* 宽高和位置交由 JS 动态居中 */
   }
 
-  /* 底部聊天区，固定高度 */
   .chat-area { 
     flex: none; 
-    width: 100%; /* 覆盖电脑端的固定宽度 */
+    width: 100%;
     height: 230px; 
     display: flex; 
     flex-direction: column; 
