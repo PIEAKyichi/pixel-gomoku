@@ -1,0 +1,13 @@
+{
+  "name": "pixel-gomoku",
+  "version": "1.0.0",
+  "private": true,
+  "description": "像素复古风联机五子棋",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

@@ -1,0 +1,278 @@
+/* public/style.css */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --ink:    #0f0f1b;
+  --bg:     #1a1c2c;
+  --bg2:    #29366f;
+  --panel:  #333c57;
+  --line:   #566c86;
+  --text:   #f4f4f4;
+  --dim:    #94b0c2;
+  --accent: #41a6f6;
+  --yellow: #ffcd75;
+  --green:  #a7f070;
+  --red:    #ef7d57;
+}
+
+html, body { height: 100%; overflow: hidden; }
+
+body {
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(rgba(41, 54, 111, .35) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(41, 54, 111, .35) 1px, transparent 1px);
+  background-size: 32px 32px;
+  color: var(--text);
+  font-family: "Courier New", "Lucida Console", monospace;
+  display: flex;
+  align-items: center; 
+  justify-content: center; 
+  padding: 16px;
+}
+
+body::after {
+  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 999;
+  background: repeating-linear-gradient(to bottom, rgba(0,0,0,.12) 0px, rgba(0,0,0,.12) 1px, transparent 1px, transparent 4px);
+}
+
+#app { width: 100%; max-width: 1020px; height: 100%; max-height: 800px; display: flex; flex-direction: column; }
+
+.screen { display: none; width: 100%; height: 100%; }
+.screen.active { display: flex; flex-direction: column; }
+
+.hidden { display: none !important; }
+
+/* ================= 大厅 ================= */
+#lobby {
+  max-width: 400px;
+  margin: auto;
+  padding: 32px 28px 24px;
+  background: var(--bg2);
+  border: 4px solid var(--ink);
+  box-shadow: 0 0 0 4px var(--line), 10px 10px 0 0 rgba(0, 0, 0, .45);
+  position: relative;
+  height: auto;
+}
+
+.time-display {
+  position: absolute;
+  top: 10px; left: 10px;
+  font-size: 12px; color: var(--dim); font-weight: bold; letter-spacing: 1px;
+}
+
+h1 { text-align: center; font-size: 34px; letter-spacing: 8px; color: var(--yellow); text-shadow: 4px 4px 0 #b13e53; margin-bottom: 6px; }
+.subtitle { text-align: center; font-size: 11px; letter-spacing: 6px; color: var(--dim); margin-bottom: 20px; }
+
+.avatar-upload { display: flex; justify-content: center; margin-bottom: 20px; }
+.avatar-upload label {
+  width: 80px; height: 80px; border: 3px dashed var(--line); background: var(--ink);
+  display: flex; align-items: center; justify-content: center; cursor: pointer; overflow: hidden;
+  color: var(--dim); font-size: 12px; text-align: center; transition: border-color 0.2s;
+}
+.avatar-upload label:hover { border-color: var(--accent); }
+.avatar-upload img { width: 100%; height: 100%; object-fit: cover; image-rendering: pixelated; }
+
+.field { display: block; margin-bottom: 16px; }
+.field > span { display: block; font-size: 12px; letter-spacing: 2px; color: var(--dim); margin-bottom: 6px; }
+
+input {
+  width: 100%; font-family: inherit; font-size: 15px; letter-spacing: 1px; padding: 10px 12px;
+  background: var(--ink); color: var(--text); border: 3px solid var(--line); outline: none;
+}
+input::placeholder { color: #566c86; }
+input:focus { border-color: var(--accent); }
+
+button {
+  font-family: inherit; font-size: 14px; font-weight: bold; letter-spacing: 2px; padding: 11px 18px;
+  color: var(--ink); background: var(--accent); border: 3px solid var(--ink);
+  box-shadow: inset -3px -3px 0 rgba(0,0,0,.28), inset 3px 3px 0 rgba(255,255,255,.28);
+  cursor: pointer; user-select: none;
+}
+button:hover { filter: brightness(1.12); }
+button:active { transform: translate(2px, 2px); box-shadow: inset 3px 3px 0 rgba(0,0,0,.28); }
+
+.divider { display: flex; align-items: center; gap: 10px; margin: 16px 0; font-size: 12px; letter-spacing: 2px; color: var(--dim); }
+.divider::before, .divider::after { content: ""; flex: 1; height: 3px; background: var(--line); }
+.join-row { display: flex; gap: 8px; }
+.join-row input { flex: 1; text-transform: uppercase; letter-spacing: 4px; }
+.lobby-msg { min-height: 18px; margin-top: 10px; font-size: 12px; text-align: center; color: var(--red); }
+
+/* ================= 对局 ================= */
+#game.active { flex: 1; gap: 14px; min-height: 0; display: flex; flex-direction: column; }
+
+.topbar {
+  display: flex; align-items: center; gap: 12px; padding: 10px 14px; font-size: 13px;
+  background: var(--bg2); border: 4px solid var(--ink); box-shadow: 0 0 0 4px var(--line), 6px 6px 0 rgba(0,0,0,.45);
+  flex: none;
+}
+.room-label { color: var(--yellow); letter-spacing: 2px; white-space: nowrap; }
+.topbar .time-display { position: static; flex: 1; text-align: center; color: var(--dim); }
+.topbar-btns { display: flex; gap: 8px; }
+.topbar-btns button { padding: 7px 12px; font-size: 12px; letter-spacing: 1px; }
+.btn-ghost { background: var(--panel); color: var(--text); box-shadow: inset -3px -3px 0 rgba(0,0,0,.35), inset 3px 3px 0 rgba(255,255,255,.10); }
+
+.main { display: flex; gap: 14px; flex: 1; min-height: 0; }
+
+/* 对弈区 */
+.game-vertical {
+  display: flex; flex-direction: column; align-items: center;
+  flex: none; height: 100%; gap: 8px;
+}
+
+/* 顶部玩家栏 */
+.players-top {
+  display: flex; justify-content: space-between; width: 100%; position: relative;
+  margin-bottom: 4px;
+}
+.player-zone { position: relative; }
+.opponent-zone { display: flex; justify-content: flex-start; }
+.me-zone { display: flex; justify-content: flex-end; flex-direction: row-reverse; }
+
+.p-info {
+  display: flex; align-items: center; gap: 10px; padding: 6px 12px;
+  background: var(--panel); border: 3px solid var(--ink); border-radius: 4px;
+}
+.p-avatar { width: 40px; height: 40px; border: 3px solid var(--line); background: var(--ink); image-rendering: pixelated; object-fit: cover; }
+.p-detail { display: flex; flex-direction: column; }
+.p-name { font-size: 14px; font-weight: bold; white-space: nowrap; max-width: 100px; overflow: hidden; text-overflow: ellipsis; }
+.p-time { font-size: 12px; color: var(--yellow); }
+
+/* 气泡样式 */
+.bubble {
+  position: absolute;
+  top: calc(100% + 8px);
+  background: var(--text); color: var(--ink);
+  padding: 8px 12px; font-size: 13px; font-weight: bold;
+  border: 3px solid var(--ink); border-radius: 6px;
+  box-shadow: 4px 4px 0 rgba(0,0,0,.3);
+  width: max-content;
+  max-width: 200px;
+  white-space: normal;
+  word-break: break-all;
+  z-index: 10;
+}
+.opponent-zone .bubble { left: 0; }
+.me-zone .bubble { right: 0; }
+
+/* 棋盘容器：限制大小由 JS 控制 */
+.board-container { flex: none; display: flex; justify-content: center; align-items: center; flex: 1; min-height: 0; width: 100%; }
+#board {
+  border: 4px solid var(--ink); box-shadow: 0 0 0 4px var(--line), 8px 8px 0 rgba(0,0,0,.45);
+  cursor: pointer; touch-action: manipulation;
+}
+
+/* 聊天区 */
+.chat-area {
+  flex: 1; display: flex; flex-direction: column; gap: 8px; min-width: 240px; min-height: 0;
+}
+.messages {
+  flex: 1; overflow-y: auto; padding: 10px; font-size: 13px; line-height: 1.5;
+  background: var(--ink); border: 3px solid var(--line); display: flex; flex-direction: column; gap: 4px;
+}
+.messages::-webkit-scrollbar { width: 8px; }
+.messages::-webkit-scrollbar-thumb { background: var(--line); }
+.msg { word-break: break-word; }
+.msg-name { font-weight: bold; }
+.msg.system { color: var(--dim); font-size: 12px; font-style: italic; }
+
+.action-bar { display: flex; gap: 6px; }
+.action-bar button { flex: 1; padding: 6px; font-size: 12px; letter-spacing: 0px; background: var(--yellow); }
+
+/* 聊天输入与快捷菜单 */
+.chat-input-wrapper { position: relative; }
+#quick-menu {
+  position: absolute; bottom: 100%; left: 0; width: 100%;
+  background: var(--bg2); border: 3px solid var(--line); border-bottom: none;
+  display: flex; flex-direction: column;
+}
+.quick-item { padding: 10px 12px; font-size: 13px; cursor: pointer; border-bottom: 2px solid var(--ink); color: var(--text); }
+.quick-item:hover { background: var(--line); color: var(--ink); }
+
+.chat-form { display: flex; gap: 6px; }
+.chat-form input { flex: 1; font-size: 13px; padding: 10px; }
+.chat-form button { padding: 8px 16px; font-size: 12px; letter-spacing: 1px; }
+
+/* ================= 弹窗 ================= */
+.modal {
+  position: fixed; inset: 0; background: rgba(0,0,0,.7); z-index: 1000;
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+}
+.modal-content {
+  background: var(--bg2); border: 4px solid var(--ink); box-shadow: 0 0 0 4px var(--line), 8px 8px 0 rgba(0,0,0,.5);
+  padding: 24px; max-width: 320px; width: 100%; text-align: center;
+}
+.modal-btns { display: flex; gap: 16px; margin-top: 20px; justify-content: center; }
+
+/* ================= 移动端完美自适应 ================= */
+@media (max-width: 760px) {
+  html, body { 
+    height: 100%; 
+    overflow: hidden; 
+    padding: 0;
+  }
+  
+  body { align-items: stretch; }
+  #app { height: 100%; max-height: none; max-width: none; padding: 8px; }
+  
+  #game.active {
+    flex: 1;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  
+  .main { 
+    flex: 1; 
+    display: flex; 
+    flex-direction: column; 
+    min-height: 0; 
+    gap: 6px;
+  }
+  
+  /* 上方游戏区，弹性占据剩余空间 */
+  .game-vertical {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    width: 100%;
+  }
+  
+  .players-top { flex: none; margin-bottom: 8px; }
+
+  /* 中间棋盘，采用绝对定位防止撑大容器 */
+  .board-container { 
+    flex: 1; 
+    position: relative; 
+    width: 100%; 
+    min-height: 0; 
+    overflow: hidden;
+  }
+  
+  #board {
+    position: absolute;
+    /* 宽高和位置交由 JS 动态居中 */
+  }
+
+  /* 底部聊天区，固定高度，吃满底部所有空间 */
+  .chat-area { 
+    flex: none; 
+    height: 230px; /* 固定高度，绝不缩水 */
+    display: flex; 
+    flex-direction: column; 
+    gap: 6px;
+  }
+  
+  .messages { 
+    flex: 1; 
+    min-height: 0; 
+    padding: 6px; 
+    font-size: 13px; 
+  }
+
+  h1 { font-size: 26px; letter-spacing: 4px; }
+  .opponent-zone .bubble { max-width: 140px; font-size: 12px; }
+  .me-zone .bubble { max-width: 140px; font-size: 12px; }
+}
