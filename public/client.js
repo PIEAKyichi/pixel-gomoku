@@ -356,6 +356,8 @@
   function updateAiHintBtn() {
     const on = state.aiHint && state.status === 'playing';
     aiHintBtn.classList.toggle('hidden', !on);
+    aiHintBtn.disabled = aiBusy;
+    aiHintBtn.textContent = aiBusy ? '计算中…' : (state.aiMove ? '取消提醒' : 'AI 提醒');
     if (!on) state.aiMove = null;
   }
 
@@ -571,19 +573,42 @@
   $('undoBtn').onclick = () => { if (state.status === 'playing') { send({ type: 'undo_req' }); addSystemMessage('已发送悔棋请求'); } };
   $('drawBtn').onclick = () => { if (state.status === 'playing') { send({ type: 'draw_req' }); addSystemMessage('已发送求和请求'); } };
   $('resignBtn').onclick = () => { if (state.status === 'playing') { if (confirm('确定认输吗？')) send({ type: 'resign' }); } };
-  aiHintBtn.onclick = () => {
-    if (state.status !== 'playing') return;
-    if (state.aiMove) {
-      state.aiMove = null;
-      draw();
-    } else if (window.GomokuAI && window.GomokuAI.bestMove) {
-      const mv = window.GomokuAI.bestMove(state.board, state.turn);
-      if (mv && (state.board[mv.y]?.[mv.x] ?? BLACK) === EMPTY) {
+  // AI 计算放在 Web Worker 后台线程,避免阻塞 UI
+  let aiWorker = null, aiBusy = false, aiReqHistoryLen = -1;
+  function getAiWorker() {
+    if (aiWorker) return aiWorker;
+    aiWorker = new Worker('ai/worker.mjs', { type: 'module' });
+    aiWorker.onmessage = (e) => {
+      aiBusy = false;
+      const mv = e.data;
+      // 计算期间若棋局已变化(落子/悔棋/结束),丢弃过期建议
+      const fresh = aiReqHistoryLen === state.history.length && state.status === 'playing';
+      if (mv && fresh && (state.board[mv.y]?.[mv.x] ?? BLACK) === EMPTY) {
         state.aiMove = mv;
         draw();
         addSystemMessage(`AI 建议：${colName(mv.x)}${mv.y + 1}`);
       }
+      updateAiHintBtn();
+    };
+    aiWorker.onerror = () => {
+      aiBusy = false;
+      addSystemMessage('AI 计算出错，请重试');
+      updateAiHintBtn();
+    };
+    return aiWorker;
+  }
+  aiHintBtn.onclick = () => {
+    if (state.status !== 'playing' || aiBusy) return;
+    if (state.aiMove) {
+      state.aiMove = null;
+      draw();
+      updateAiHintBtn();
+      return;
     }
+    aiBusy = true;
+    aiReqHistoryLen = state.history.length;
+    getAiWorker().postMessage({ board: state.board, color: state.turn });
+    updateAiHintBtn();
   };
   resultBtn.onclick = () => gameoverModal.classList.add('hidden');
 
