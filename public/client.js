@@ -14,18 +14,22 @@
   const avatarInput = $('avatarInput'), avatarPreview = $('avatarPreview'), avatarPlaceholder = $('avatarPlaceholder');
   const modal = $('modal'), modalText = $('modalText'), modalAccept = $('modalAccept'), modalReject = $('modalReject');
   const gameoverModal = $('gameoverModal'), resultTitle = $('resultTitle'), resultDesc = $('resultDesc'), resultBtn = $('resultBtn');
+  const aiHintInput = $('aiHintInput'), aiHintBtn = $('aiHintBtn');
 
   let myAvatarData = '';
   const state = {
     myId: null, myColor: 0, roomId: '', players: [], board: [], turn: 0,
     status: 'idle', winner: 0, winLine: null, pendingMove: null, lastMove: null,
-    myTime: 0, oppTime: 0, urgeCount: 0
+    myTime: 0, oppTime: 0, urgeCount: 0, history: [], aiHint: false, aiMove: null
   };
 
   let cssSize = 0;
   let ws = null;
   let timerInterval = null;
   let oppBubbleTimer = null, myBubbleTimer = null;
+  let pigTimer = null;
+  let reconnectTimer = null;
+  let reconnectAttempts = 0;
 
   // 初始化本地存储的用户信息
   function initLocalUser() {
@@ -84,10 +88,39 @@
     reader.readAsDataURL(file);
   });
 
+  function showReconnect() { $('reconnectOverlay').classList.remove('hidden'); }
+  function hideReconnect() { $('reconnectOverlay').classList.add('hidden'); }
+
   function connect() {
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     ws = new WebSocket(`${proto}//${location.host}`);
+    ws.onopen = () => {
+      reconnectAttempts = 0;
+      hideReconnect();
+      if (state.roomId && state.myId && state.status !== 'idle') {
+        send({ type: 'reconnect', roomId: state.roomId, playerId: state.myId });
+      }
+    };
     ws.onmessage = (ev) => { try { handleMessage(JSON.parse(ev.data)); } catch {} };
+    ws.onclose = () => {
+      if (state.roomId && state.myId && state.status !== 'idle') {
+        showReconnect();
+        scheduleReconnect();
+      } else {
+        scheduleReconnect();
+      }
+    };
+    ws.onerror = () => { try { ws.close(); } catch {} };
+  }
+
+  function scheduleReconnect() {
+    clearTimeout(reconnectTimer);
+    const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 10000);
+    reconnectAttempts++;
+    reconnectTimer = setTimeout(() => {
+      if (state.roomId && state.myId && state.status !== 'idle') connect();
+      else if (!ws || ws.readyState === 3) connect();
+    }, delay);
   }
 
   function send(obj) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); }
@@ -102,6 +135,8 @@
   function formatSec(sec) {
     return `${Math.floor(sec / 60).toString().padStart(2, '0')}:${(sec % 60).toString().padStart(2, '0')}`;
   }
+
+  function colName(x) { return String.fromCharCode(65 + x); }
 
   function startTimer() {
     clearInterval(timerInterval);
@@ -124,6 +159,9 @@
         state.board = msg.board;
         state.turn = msg.turn;
         state.players = msg.players;
+        state.history = msg.history || [];
+        state.aiHint = !!msg.aiHint;
+        state.aiMove = null;
         state.status = (msg.type === 'created') ? 'waiting' : 'playing';
         state.winLine = null; state.pendingMove = null; state.lastMove = null;
         state.urgeCount = 0;
@@ -145,17 +183,22 @@
         state.board[msg.y][msg.x] = msg.color;
         state.turn = msg.turn;
         state.lastMove = { x: msg.x, y: msg.y };
+        state.history = msg.history || state.history;
         state.urgeCount = 0;
+        state.aiMove = null;
         playSound();
         refreshUI();
         break;
       case 'undo_done':
         state.board = msg.board; state.turn = msg.turn; state.pendingMove = null; state.lastMove = null;
+        state.history = msg.history || state.history;
         state.urgeCount = 0;
+        state.aiMove = null;
         refreshUI(); addSystemMessage('悔棋成功');
         break;
       case 'gameover': {
         state.status = 'over'; state.winner = msg.winner; state.winLine = msg.line || null;
+        state.aiMove = null;
         refreshUI();
         showGameOver(msg);
         restartBtn.classList.remove('hidden');
@@ -166,6 +209,32 @@
         showBubble(msg.from === state.myId, msg.text);
         break;
       case 'info': addSystemMessage(msg.msg); break;
+      case 'reconnected':
+        state.roomId = msg.roomId; state.myId = msg.playerId; state.myColor = msg.color;
+        state.board = msg.board; state.turn = msg.turn; state.players = msg.players;
+        state.history = msg.history || [];
+        state.aiHint = !!msg.aiHint;
+        state.aiMove = null;
+        state.winner = msg.winner; state.winLine = msg.winLine || null;
+        state.status = msg.status;
+        state.pendingMove = null; state.lastMove = null; state.urgeCount = 0;
+        hideReconnect();
+        lobbyEl.classList.remove('active'); gameEl.classList.add('active');
+        addSystemMessage('已重新连接');
+        if (state.status === 'over') {
+          restartBtn.classList.remove('hidden');
+          showGameOver({ winner: state.winner, line: state.winLine }, { taunt: false });
+        } else {
+          restartBtn.classList.add('hidden');
+        }
+        refreshUI(); requestAnimationFrame(resizeCanvas);
+        break;
+      case 'opponentDisconnected':
+        addSystemMessage('对方掉线了，等待重连...');
+        break;
+      case 'opponentReconnected':
+        addSystemMessage('对方已重新连接');
+        break;
       case 'opponentLeft':
         addSystemMessage('对手离开了房间');
         setTimeout(() => backToLobby('对手已离开'), 1200);
@@ -190,7 +259,31 @@
     }
   }
 
-  function showGameOver(msg) {
+  function speakTaunt(text) {
+    try {
+      if (!('speechSynthesis' in window)) return;
+      speechSynthesis.cancel();
+      const u = new SpeechSynthesisUtterance(text);
+      u.lang = 'zh-CN';
+      u.rate = 1; u.pitch = 1;
+      speechSynthesis.speak(u);
+    } catch (e) {}
+  }
+
+  function showPig(name) {
+    const ov = $('pigOverlay');
+    $('pigText').textContent = `${name} 真是个傻子`;
+    ov.classList.remove('hidden');
+    ov.classList.remove('show');
+    void ov.offsetWidth; // 触发重排以重放动画
+    ov.classList.add('show');
+    clearTimeout(pigTimer);
+    pigTimer = setTimeout(() => { ov.classList.add('hidden'); ov.classList.remove('show'); }, 4000);
+    ov.onclick = () => { ov.classList.add('hidden'); ov.classList.remove('show'); };
+  }
+
+  function showGameOver(msg, opts) {
+    opts = opts || {};
     gameoverModal.classList.remove('hidden');
     if (msg.winner === 0) {
       resultTitle.textContent = '平局';
@@ -199,6 +292,12 @@
       resultTitle.textContent = '🎉 胜利！';
       const taunts = ["轻松拿下！", "这波操作太秀了！", "你太强了，对手已崩溃。"];
       resultDesc.textContent = taunts[Math.floor(Math.random() * taunts.length)];
+      if (opts.taunt !== false) {
+        const opp = state.players.find(p => p.color !== state.myColor);
+        const oppName = (opp && opp.name) || '对手';
+        speakTaunt(`${oppName}真是个傻子`);
+        showPig(oppName);
+      }
     } else {
       resultTitle.textContent = '💀 失败';
       const taunts = ["太菜了，建议多练练！", "就这？我还没发力呢！", "回家洗洗睡吧！"];
@@ -215,7 +314,8 @@
 
   function backToLobby(msg) {
     clearInterval(timerInterval);
-    state.status = 'idle'; state.board = []; state.winLine = null; state.myColor = 0; state.roomId = ''; state.myId = null; state.players = [];
+    state.status = 'idle'; state.board = []; state.winLine = null; state.myColor = 0; state.roomId = ''; state.myId = null; state.players = []; state.history = [];
+    hideReconnect();
     gameEl.classList.remove('active'); lobbyEl.classList.add('active');
     messagesEl.innerHTML = ''; restartBtn.classList.add('hidden'); gameoverModal.classList.add('hidden'); modal.classList.add('hidden');
     lobbyMsg.textContent = msg || '';
@@ -248,7 +348,31 @@
 
     $('myTime').textContent = formatSec(state.myTime);
     $('oppTime').textContent = formatSec(state.oppTime);
+    updateAiHintBtn();
     draw();
+    renderHistory();
+  }
+
+  function updateAiHintBtn() {
+    const on = state.aiHint && state.status === 'playing';
+    aiHintBtn.classList.toggle('hidden', !on);
+    if (!on) state.aiMove = null;
+  }
+
+  function renderHistory() {
+    const list = $('historyList');
+    if (!list) return;
+    list.innerHTML = '';
+    const frag = document.createDocumentFragment();
+    state.history.forEach((m, i) => {
+      const s = document.createElement('span');
+      s.className = 'hist-step';
+      const stone = m.color === BLACK ? '⚫' : '⚪';
+      s.textContent = `${i + 1}.${stone}${colName(m.x)}${m.y + 1}`;
+      frag.appendChild(s);
+    });
+    list.appendChild(frag);
+    list.scrollTop = list.scrollHeight;
   }
 
   // ================= Canvas 渲染与尺寸计算 =================
@@ -256,15 +380,22 @@
     const container = document.querySelector('.board-container');
     if (!container) return;
     
+    // 获取容器真实渲染大小
     const rect = container.getBoundingClientRect();
     if (rect.width < 10 || rect.height < 10) return;
 
+    // 找最小边长作为正方形棋盘尺寸
     let size = Math.min(rect.width, rect.height);
-    size = Math.max(100, size - 20); 
+    size = size - 10; // 留出一点安全边距
+    if (size < 100) size = 100; 
 
+    // 强制设置大小和居中定位
     canvas.style.width = size + 'px';
     canvas.style.height = size + 'px';
-    
+    canvas.style.left = '50%';
+    canvas.style.top = '50%';
+    canvas.style.transform = 'translate(-50%, -50%)';
+
     const dpr = window.devicePixelRatio || 1;
     canvas.width = Math.round(size * dpr);
     canvas.height = Math.round(size * dpr);
@@ -322,6 +453,18 @@
       ctx.strokeStyle = '#ef7d57'; ctx.lineWidth = Math.max(3, gap * 0.16); ctx.lineCap = 'round';
       ctx.beginPath(); ctx.moveTo(pad + x0 * gap, pad + y0 * gap); ctx.lineTo(pad + x1 * gap, pad + y1 * gap); ctx.stroke();
     }
+
+    if (state.aiMove && (state.board[state.aiMove.y]?.[state.aiMove.x] ?? BLACK) === EMPTY) {
+      const cx = pad + state.aiMove.x * gap, cy = pad + state.aiMove.y * gap;
+      ctx.fillStyle = 'rgba(65,166,246,0.35)';
+      ctx.beginPath(); ctx.arc(cx, cy, gap * 0.42, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = '#41a6f6'; ctx.lineWidth = Math.max(2.5, gap * 0.08);
+      ctx.beginPath(); ctx.arc(cx, cy, gap * 0.42, 0, Math.PI * 2); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(cx - gap * 0.2, cy); ctx.lineTo(cx + gap * 0.2, cy);
+      ctx.moveTo(cx, cy - gap * 0.2); ctx.lineTo(cx, cy + gap * 0.2);
+      ctx.stroke();
+    }
   }
 
   function drawStone(x, y, color) {
@@ -345,18 +488,11 @@
     return [x, y];
   }
 
-  // 【核心修改】：将 click 换成 pointerdown，并阻止默认行为
-  canvas.addEventListener('pointerdown', (e) => {
-    // 阻止浏览器默认行为（如可能引发的 click 事件、选中、缩放等），提升手感
-    e.preventDefault(); 
-
+  canvas.addEventListener('click', (e) => {
     if (state.status !== 'playing' || state.turn !== state.myColor) return;
-    
-    // 兼容触屏和鼠标，获取坐标
     const p = toBoardCoords(e.clientX, e.clientY);
     if (!p) return;
     const [x, y] = p;
-    
     if ((state.board[y]?.[x] ?? BLACK) !== EMPTY) return;
 
     if (state.pendingMove && state.pendingMove.x === x && state.pendingMove.y === y) {
@@ -366,10 +502,7 @@
       state.pendingMove = { x, y };
       draw();
     }
-  }, { passive: false });
-
-  // 防止某些浏览器在 pointerdown 之后又触发一次 click
-  canvas.addEventListener('click', (e) => e.preventDefault());
+  });
 
   function addChatMessage(msg) {
     const row = document.createElement('div'); row.className = 'msg';
@@ -424,7 +557,7 @@
     const name = nameInput.value.trim() || '玩家';
     localStorage.setItem('gomoku_name', name);
     const customId = createRoomInput.value.trim().toUpperCase();
-    send({ type: 'create', name, avatar: myAvatarData, roomId: customId });
+    send({ type: 'create', name, avatar: myAvatarData, roomId: customId, aiHint: aiHintInput.checked });
   };
   $('joinBtn').onclick = () => {
     const name = nameInput.value.trim() || '玩家';
@@ -438,6 +571,20 @@
   $('undoBtn').onclick = () => { if (state.status === 'playing') { send({ type: 'undo_req' }); addSystemMessage('已发送悔棋请求'); } };
   $('drawBtn').onclick = () => { if (state.status === 'playing') { send({ type: 'draw_req' }); addSystemMessage('已发送求和请求'); } };
   $('resignBtn').onclick = () => { if (state.status === 'playing') { if (confirm('确定认输吗？')) send({ type: 'resign' }); } };
+  aiHintBtn.onclick = () => {
+    if (state.status !== 'playing') return;
+    if (state.aiMove) {
+      state.aiMove = null;
+      draw();
+    } else if (window.GomokuAI && window.GomokuAI.bestMove) {
+      const mv = window.GomokuAI.bestMove(state.board, state.turn);
+      if (mv && (state.board[mv.y]?.[mv.x] ?? BLACK) === EMPTY) {
+        state.aiMove = mv;
+        draw();
+        addSystemMessage(`AI 建议：${colName(mv.x)}${mv.y + 1}`);
+      }
+    }
+  };
   resultBtn.onclick = () => gameoverModal.classList.add('hidden');
 
   // 启动

@@ -1,0 +1,8 @@
+# Render 一键部署配置(Blueprint)
+services:
+  - type: web
+    name: pixel-gomoku
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
