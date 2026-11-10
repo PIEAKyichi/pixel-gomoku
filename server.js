@@ -13,6 +13,7 @@ const MIME = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
   '.js': 'application/javascript; charset=utf-8',
+  '.mjs': 'application/javascript; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.png': 'image/png',
   '.svg': 'image/svg+xml',
@@ -45,12 +46,12 @@ function makeRoomId() {
   return id;
 }
 
-function send(ws, obj) { if (ws.readyState === 1) ws.send(JSON.stringify(obj)); }
+function send(ws, obj) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); }
 function broadcast(room, obj, exceptWs) {
   const data = JSON.stringify(obj);
   for (const p of room.players) {
     if (p.ws === exceptWs) continue;
-    if (p.ws.readyState === 1) p.ws.send(data);
+    if (p.connected && p.ws && p.ws.readyState === 1) p.ws.send(data);
   }
 }
 
@@ -82,10 +83,22 @@ wss.on('connection', (ws) => {
   ws.on('close', () => {
     const room = rooms.get(ws.roomId);
     if (!room) return;
-    rooms.delete(room.id);
-    for (const p of room.players) {
-      if (p.ws !== ws) { p.ws.roomId = null; send(p.ws, { type: 'opponentLeft' }); }
-    }
+    const player = room.players.find(p => p.ws === ws);
+    if (!player) return;
+    player.connected = false;
+    player.ws = null;
+    const op = room.players.find(p => p !== player && p.connected);
+    if (op) send(op.ws, { type: 'opponentDisconnected' });
+    clearTimeout(player.reconnectTimer);
+    player.reconnectTimer = setTimeout(() => {
+      if (player.connected) return;
+      if (rooms.get(room.id) !== room) return;
+      rooms.delete(room.id);
+      for (const p of room.players) {
+        if (p === player) continue;
+        if (p.connected && p.ws) { p.ws.roomId = null; send(p.ws, { type: 'opponentLeft' }); }
+      }
+    }, 60000);
   });
 });
 
@@ -103,14 +116,14 @@ function handle(ws, msg) {
         customId = makeRoomId();
       }
 
-      const room = { id: customId, players: [], board: emptyBoard(), turn: BLACK, status: 'waiting', winner: 0, winLine: null, history: [] };
+      const room = { id: customId, players: [], board: emptyBoard(), turn: BLACK, status: 'waiting', winner: 0, winLine: null, history: [], aiHint: !!msg.aiHint };
       rooms.set(customId, room);
 
       const playerId = Math.random().toString(36).slice(2, 10);
       ws.roomId = customId; ws.name = name; ws.color = BLACK; ws.playerId = playerId; ws.avatar = msg.avatar || '';
-      room.players.push({ ws, name, color: BLACK, id: playerId, avatar: ws.avatar });
+      room.players.push({ ws, name, color: BLACK, id: playerId, avatar: ws.avatar, connected: true, reconnectTimer: null });
 
-      send(ws, { type: 'created', roomId: customId, color: BLACK, playerId, board: room.board, turn: room.turn, status: room.status, players: room.players.map(p=>({name:p.name,color:p.color,avatar:p.avatar})) });
+      send(ws, { type: 'created', roomId: customId, color: BLACK, playerId, board: room.board, turn: room.turn, status: room.status, history: room.history, aiHint: room.aiHint, players: room.players.map(p=>({name:p.name,color:p.color,avatar:p.avatar})) });
       break;
     }
     case 'join': {
@@ -123,13 +136,33 @@ function handle(ws, msg) {
       const name = String(msg.name || '').trim().slice(0, 12) || '玩家';
       const playerId = Math.random().toString(36).slice(2, 10);
       ws.roomId = id; ws.name = name; ws.color = WHITE; ws.playerId = playerId; ws.avatar = msg.avatar || '';
-      room.players.push({ ws, name, color: WHITE, id: playerId, avatar: ws.avatar });
+      room.players.push({ ws, name, color: WHITE, id: playerId, avatar: ws.avatar, connected: true, reconnectTimer: null });
 
       room.status = 'playing'; room.turn = BLACK;
       const pData = room.players.map(p => ({ name: p.name, color: p.color, avatar: p.avatar }));
       for (const p of room.players) {
-        send(p.ws, { type: 'start', roomId: id, color: p.color, playerId: p.id, board: room.board, turn: room.turn, players: pData });
+        send(p.ws, { type: 'start', roomId: id, color: p.color, playerId: p.id, board: room.board, turn: room.turn, history: room.history, aiHint: room.aiHint, players: pData });
       }
+      break;
+    }
+    case 'reconnect': {
+      const id = String(msg.roomId || '').trim().toUpperCase();
+      const room = rooms.get(id);
+      if (!room) return send(ws, { type: 'error', msg: '房间不存在' });
+      const player = room.players.find(p => p.id === msg.playerId && !p.connected);
+      if (!player) return send(ws, { type: 'error', msg: '无法恢复房间' });
+      clearTimeout(player.reconnectTimer);
+      player.connected = true;
+      player.ws = ws;
+      ws.roomId = id; ws.name = player.name; ws.color = player.color; ws.playerId = player.id; ws.avatar = player.avatar;
+      send(ws, {
+        type: 'reconnected', roomId: id, color: player.color, playerId: player.id,
+        board: room.board, turn: room.turn, status: room.status, winner: room.winner,
+        winLine: room.winLine, history: room.history, aiHint: room.aiHint,
+        players: room.players.map(p => ({ name: p.name, color: p.color, avatar: p.avatar }))
+      });
+      const op = room.players.find(p => p !== player && p.connected);
+      if (op) send(op.ws, { type: 'opponentReconnected' });
       break;
     }
     case 'move': {
@@ -143,7 +176,7 @@ function handle(ws, msg) {
       const line = checkWin(room.board, x, y, ws.color);
       room.turn = ws.color === BLACK ? WHITE : BLACK;
 
-      broadcast(room, { type: 'move', x, y, color: ws.color, turn: room.turn });
+      broadcast(room, { type: 'move', x, y, color: ws.color, turn: room.turn, history: room.history });
 
       if (line) {
         room.status = 'over'; room.winner = ws.color; room.winLine = line;
@@ -182,7 +215,7 @@ function handle(ws, msg) {
             room.board[prev.y][prev.x] = EMPTY;
           }
           room.turn = room.history.length > 0 ? (room.history[room.history.length - 1].color === BLACK ? WHITE : BLACK) : BLACK;
-          broadcast(room, { type: 'undo_done', board: room.board, turn: room.turn });
+          broadcast(room, { type: 'undo_done', board: room.board, turn: room.turn, history: room.history });
         }
       } else {
         send(requester.ws, { type: 'info', msg: '对方拒绝了你的悔棋请求' });
@@ -215,7 +248,7 @@ function handle(ws, msg) {
       for (const p of room.players) { p.color = p.color === BLACK ? WHITE : BLACK; p.ws.color = p.color; }
       room.turn = BLACK;
       const pData = room.players.map(p => ({ name: p.name, color: p.color, avatar: p.avatar }));
-      for (const p of room.players) send(p.ws, { type: 'restart', board: room.board, turn: room.turn, color: p.color, players: pData });
+      for (const p of room.players) send(p.ws, { type: 'restart', board: room.board, turn: room.turn, color: p.color, history: room.history, aiHint: room.aiHint, players: pData });
       break;
     }
     case 'chat': {
