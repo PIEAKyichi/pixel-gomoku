@@ -13,7 +13,7 @@
 
 ## 🧠 AI 说明
 
-AI 模块位于 `public/ai/`,为浏览器端 ES Modules,对局中点击 **AI 提醒** 按钮时同步计算(约 1 秒,期间页面短暂冻结属正常)。
+AI 模块位于 `public/ai/`,为浏览器端 ES Modules。对局中点击 **AI 提醒** 按钮时,搜索在 **Web Worker 后台线程**运行(约 1 秒),页面操作不受影响。
 
 算法组成:
 
@@ -22,6 +22,7 @@ AI 模块位于 `public/ai/`,为浏览器端 ES Modules,对局中点击 **AI 提
 | `board.mjs` | 棋盘常量、候选点生成、胜负判断 |
 | `evaluate.mjs` | 棋型识别(活四/冲四/跳四/活三/眠三…)+ 叶子威胁判定(冲四+活三等强制胜/负局面) |
 | `search.mjs` | Negamax + Alpha-Beta 剪枝 + 迭代加深 |
+| `worker.mjs` | Web Worker 入口,后台运行搜索,避免阻塞 UI |
 | `index.mjs` | 入口,暴露 `window.GomokuAI.bestMove(board, color)` |
 
 搜索层核心优化:
@@ -76,6 +77,7 @@ pixel-gomoku/
         ├── board.mjs   # 棋盘工具
         ├── evaluate.mjs # 局面评估与棋型识别
         ├── search.mjs  # 搜索算法
+        ├── worker.mjs  # Web Worker 入口(后台计算)
         └── index.mjs   # 全局入口 GomokuAI
 ```
 
